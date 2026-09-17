@@ -137,45 +137,33 @@ func (s *UsuarioService) Autenticar(ctx context.Context, email, password string)
 	// 1. Buscar en BD si está disponible
 	if s != nil && s.Repo != nil && s.Repo.Pool != nil {
 		var u domain.Usuario
-		query := `SELECT id, nombre, email, password_hash, rol, activo, creado_en FROM usuarios WHERE email = $1 AND activo = true`
+		query := `SELECT id, nombre, email, password_hash, rol, activo, creado_en FROM usuarios WHERE email = $1`
 		err := s.Repo.Pool.QueryRow(ctx, query, email).Scan(&u.ID, &u.Nombre, &u.Email, &u.PasswordHash, &u.Rol, &u.Activo, &u.CreadoEn)
 		if err == nil {
-			// En un entorno de producción estricto se compara con bcrypt.
-			// Para soportar las credenciales creadas dinámicamente/demostración:
-			if u.PasswordHash == password || password != "" {
+			if !u.Activo {
+				return nil, fmt.Errorf("la cuenta del usuario %s está desactivada", email)
+			}
+			if u.PasswordHash == password {
 				return &u, nil
 			}
+			return nil, fmt.Errorf("contraseña incorrecta")
 		}
 	}
 
-	// 2. Fallback in-memory para demostración/pruebas de roles
+	// 2. Buscar en almacenamiento in-memory
 	for _, u := range s.inMemory {
-		if u.Email == email && u.Activo {
-			return &u, nil
+		if u.Email == email {
+			if !u.Activo {
+				return nil, fmt.Errorf("la cuenta del usuario %s está desactivada", email)
+			}
+			if u.PasswordHash == password {
+				return &u, nil
+			}
+			return nil, fmt.Errorf("contraseña incorrecta")
 		}
 	}
 
-	// Si no coincide exactamente con ningún email demo, pero ingresó datos, retornar cuenta con el email y rol según el prefijo
-	rol := "ADMIN"
-	nombre := "Usuario (" + email + ")"
-	if email == "contador@sifaco.ni" {
-		rol = "CONTADOR"
-	} else if email == "cajero@sifaco.ni" {
-		rol = "FACTURADOR"
-	} else if email == "cobranza@sifaco.ni" {
-		rol = "GESTOR_CXC"
-	} else if email == "eventos@sifaco.ni" {
-		rol = "COORDINADOR_EVENTOS"
-	}
-
-	return &domain.Usuario{
-		ID:       uuid.New(),
-		Nombre:   nombre,
-		Email:    email,
-		Rol:      rol,
-		Activo:   true,
-		CreadoEn: time.Now(),
-	}, nil
+	return nil, fmt.Errorf("credenciales no válidas: usuario o contraseña incorrectos")
 }
 
 func (s *UsuarioService) CrearUsuario(ctx context.Context, req domain.CrearUsuarioRequest) (*domain.Usuario, error) {
