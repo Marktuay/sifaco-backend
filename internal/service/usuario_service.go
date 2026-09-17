@@ -244,8 +244,13 @@ func (s *UsuarioService) ActualizarUsuario(ctx context.Context, id uuid.UUID, re
 	u := s.inMemory[index]
 
 	if s != nil && s.Repo != nil && s.Repo.Pool != nil {
-		query := `UPDATE usuarios SET nombre = $1, email = $2, rol = $3, activo = $4 WHERE id = $5`
-		_, _ = s.Repo.Pool.Exec(ctx, query, u.Nombre, u.Email, u.Rol, u.Activo, u.ID)
+		if req.Password != "" {
+			query := `UPDATE usuarios SET nombre = $1, email = $2, rol = $3, password_hash = $4, activo = $5 WHERE id = $6`
+			_, _ = s.Repo.Pool.Exec(ctx, query, u.Nombre, u.Email, u.Rol, u.PasswordHash, u.Activo, u.ID)
+		} else {
+			query := `UPDATE usuarios SET nombre = $1, email = $2, rol = $3, activo = $4 WHERE id = $5`
+			_, _ = s.Repo.Pool.Exec(ctx, query, u.Nombre, u.Email, u.Rol, u.Activo, u.ID)
+		}
 	}
 
 	return &u, nil
@@ -255,4 +260,31 @@ func (s *UsuarioService) DesactivarUsuario(ctx context.Context, id uuid.UUID) er
 	falso := false
 	_, err := s.ActualizarUsuario(ctx, id, domain.ActualizarUsuarioRequest{Activo: &falso})
 	return err
+}
+
+func (s *UsuarioService) EliminarUsuario(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var index = -1
+	for i, u := range s.inMemory {
+		if u.ID == id {
+			index = i
+			break
+		}
+	}
+
+	if index != -1 {
+		s.inMemory = append(s.inMemory[:index], s.inMemory[index+1:]...)
+	}
+
+	if s != nil && s.Repo != nil && s.Repo.Pool != nil {
+		query := `DELETE FROM usuarios WHERE id = $1`
+		_, err := s.Repo.Pool.Exec(ctx, query, id)
+		if err != nil {
+			return fmt.Errorf("error al eliminar usuario en base de datos: %w", err)
+		}
+	}
+
+	return nil
 }

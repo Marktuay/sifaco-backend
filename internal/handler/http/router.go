@@ -437,6 +437,35 @@ func (s *Server) handleDesactivarUsuario(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"mensaje": "Usuario desactivado correctamente"})
 }
 
+func (s *Server) handleEliminarUsuario(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "UUID de usuario no válido"})
+		return
+	}
+	if s.UsuarioSvc == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Servicio de usuarios no disponible"})
+		return
+	}
+	if err := s.UsuarioSvc.EliminarUsuario(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if s.AuditoriaSvc != nil {
+		_, _ = s.AuditoriaSvc.RegistrarLog(c.Request.Context(), domain.RegistrarAuditoriaRequest{
+			UsuarioEmail:  "admin@sifaco.ni",
+			Rol:           "ADMIN",
+			Accion:        "ELIMINAR_USUARIO",
+			TablaAfectada: "usuarios",
+			Detalles:      fmt.Sprintf("Usuario con ID '%s' fue eliminado del sistema", id),
+		}, c.ClientIP())
+	}
+
+	c.JSON(http.StatusOK, gin.H{"mensaje": "Usuario eliminado correctamente"})
+}
+
 func (s *Server) handleListarAuditoriaLogs(c *gin.Context) {
 	if s.AuditoriaSvc == nil {
 		c.JSON(http.StatusOK, []domain.AuditoriaLogItem{})
