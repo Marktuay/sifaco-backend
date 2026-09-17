@@ -24,6 +24,7 @@ func NewUsuarioService(repo *postgres.Repository) *UsuarioService {
 		inMemory: make([]domain.Usuario, 0),
 	}
 	s.seedDefaultUsuarios()
+	s.syncDefaultUsuariosToDB()
 	return s
 }
 
@@ -34,7 +35,7 @@ func (s *UsuarioService) seedDefaultUsuarios() {
 			ID:           uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99"),
 			Nombre:       "Administrador General",
 			Email:        "admin@sifaco.ni",
-			PasswordHash: "admin123", // Para desarrollo/demostración
+			PasswordHash: "admin123",
 			Rol:          "ADMIN",
 			Activo:       true,
 			CreadoEn:     now,
@@ -75,6 +76,21 @@ func (s *UsuarioService) seedDefaultUsuarios() {
 			Activo:       true,
 			CreadoEn:     now,
 		},
+	}
+}
+
+func (s *UsuarioService) syncDefaultUsuariosToDB() {
+	if s.Repo == nil || s.Repo.Pool == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	for _, u := range s.inMemory {
+		query := `INSERT INTO usuarios (id, nombre, email, password_hash, rol, activo, creado_en)
+				  VALUES ($1, $2, $3, $4, $5, $6, $7)
+				  ON CONFLICT (email) DO NOTHING`
+		_, _ = s.Repo.Pool.Exec(ctx, query, u.ID, u.Nombre, u.Email, u.PasswordHash, u.Rol, u.Activo, u.CreadoEn)
 	}
 }
 
@@ -134,10 +150,10 @@ func (s *UsuarioService) Autenticar(ctx context.Context, email, password string)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// 1. Buscar en BD si está disponible
+	// 1. Buscar en PostgreSQL si está disponible
 	if s != nil && s.Repo != nil && s.Repo.Pool != nil {
 		var u domain.Usuario
-		query := `SELECT id, nombre, email, password_hash, rol, activo, creado_en FROM usuarios WHERE email = $1`
+		query := `SELECT id, nombre, email, password_hash, rol, activo, creado_en FROM usuarios WHERE LOWER(email) = LOWER($1)`
 		err := s.Repo.Pool.QueryRow(ctx, query, email).Scan(&u.ID, &u.Nombre, &u.Email, &u.PasswordHash, &u.Rol, &u.Activo, &u.CreadoEn)
 		if err == nil {
 			if !u.Activo {
@@ -150,7 +166,7 @@ func (s *UsuarioService) Autenticar(ctx context.Context, email, password string)
 		}
 	}
 
-	// 2. Buscar en almacenamiento in-memory
+	// 2. Fallback almacenamiento in-memory
 	for _, u := range s.inMemory {
 		if u.Email == email {
 			if !u.Activo {
@@ -170,13 +186,6 @@ func (s *UsuarioService) CrearUsuario(ctx context.Context, req domain.CrearUsuar
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Validar que el email no exista
-	for _, u := range s.inMemory {
-		if u.Email == req.Email {
-			return nil, fmt.Errorf("el correo electrónico %s ya está registrado", req.Email)
-		}
-	}
-
 	nuevo := domain.Usuario{
 		ID:           uuid.New(),
 		Nombre:       req.Nombre,
@@ -191,7 +200,10 @@ func (s *UsuarioService) CrearUsuario(ctx context.Context, req domain.CrearUsuar
 
 	if s != nil && s.Repo != nil && s.Repo.Pool != nil {
 		query := `INSERT INTO usuarios (id, nombre, email, password_hash, rol, activo) VALUES ($1, $2, $3, $4, $5, $6)`
-		_, _ = s.Repo.Pool.Exec(ctx, query, nuevo.ID, nuevo.Nombre, nuevo.Email, nuevo.PasswordHash, nuevo.Rol, nuevo.Activo)
+		_, err := s.Repo.Pool.Exec(ctx, query, nuevo.ID, nuevo.Nombre, nuevo.Email, nuevo.PasswordHash, nuevo.Rol, nuevo.Activo)
+		if err != nil {
+			return nil, fmt.Errorf("error al insertar usuario en base de datos: %w", err)
+		}
 	}
 
 	return &nuevo, nil
@@ -201,6 +213,35 @@ func (s *UsuarioService) ActualizarUsuario(ctx context.Context, id uuid.UUID, re
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// 1. Si la BD está conectada, actualizar directamente en PostgreSQL
+	if s != nil && s.Repo != nil && s.Repo.Pool != nil {
+		var u domain.Usuario
+		query := `UPDATE usuarios SET 
+					nombre = COALESCE(NULLIF($1, ''), nombre),
+					email = COALESCE(NULLIF($2, ''), email),
+					rol = COALESCE(NULLIF($3, ''), rol),
+					password_hash = CASE WHEN $4 <> '' THEN $4 ELSE password_hash END,
+					activo = COALESCE($5, activo)
+				  WHERE id = $6
+				  RETURNING id, nombre, email, password_hash, rol, activo, creado_en`
+
+		err := s.Repo.Pool.QueryRow(ctx, query, req.Nombre, req.Email, req.Rol, req.Password, req.Activo, id).Scan(
+			&u.ID, &u.Nombre, &u.Email, &u.PasswordHash, &u.Rol, &u.Activo, &u.CreadoEn,
+		)
+
+		if err == nil {
+			// Sincronizar también la copia in-memory si existe
+			for i, mem := range s.inMemory {
+				if mem.ID == id {
+					s.inMemory[i] = u
+					break
+				}
+			}
+			return &u, nil
+		}
+	}
+
+	// 2. Fallback in-memory
 	var index = -1
 	for i, u := range s.inMemory {
 		if u.ID == id {
@@ -230,17 +271,6 @@ func (s *UsuarioService) ActualizarUsuario(ctx context.Context, id uuid.UUID, re
 	}
 
 	u := s.inMemory[index]
-
-	if s != nil && s.Repo != nil && s.Repo.Pool != nil {
-		if req.Password != "" {
-			query := `UPDATE usuarios SET nombre = $1, email = $2, rol = $3, password_hash = $4, activo = $5 WHERE id = $6`
-			_, _ = s.Repo.Pool.Exec(ctx, query, u.Nombre, u.Email, u.Rol, u.PasswordHash, u.Activo, u.ID)
-		} else {
-			query := `UPDATE usuarios SET nombre = $1, email = $2, rol = $3, activo = $4 WHERE id = $5`
-			_, _ = s.Repo.Pool.Exec(ctx, query, u.Nombre, u.Email, u.Rol, u.Activo, u.ID)
-		}
-	}
-
 	return &u, nil
 }
 
@@ -254,6 +284,14 @@ func (s *UsuarioService) EliminarUsuario(ctx context.Context, id uuid.UUID) erro
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s != nil && s.Repo != nil && s.Repo.Pool != nil {
+		query := `DELETE FROM usuarios WHERE id = $1`
+		_, err := s.Repo.Pool.Exec(ctx, query, id)
+		if err != nil {
+			return fmt.Errorf("error al eliminar usuario en base de datos: %w", err)
+		}
+	}
+
 	var index = -1
 	for i, u := range s.inMemory {
 		if u.ID == id {
@@ -264,14 +302,6 @@ func (s *UsuarioService) EliminarUsuario(ctx context.Context, id uuid.UUID) erro
 
 	if index != -1 {
 		s.inMemory = append(s.inMemory[:index], s.inMemory[index+1:]...)
-	}
-
-	if s != nil && s.Repo != nil && s.Repo.Pool != nil {
-		query := `DELETE FROM usuarios WHERE id = $1`
-		_, err := s.Repo.Pool.Exec(ctx, query, id)
-		if err != nil {
-			return fmt.Errorf("error al eliminar usuario en base de datos: %w", err)
-		}
 	}
 
 	return nil
