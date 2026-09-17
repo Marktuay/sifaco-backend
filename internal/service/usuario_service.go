@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -89,7 +90,8 @@ func (s *UsuarioService) syncDefaultUsuariosToDB() {
 	for _, u := range s.inMemory {
 		query := `INSERT INTO usuarios (id, nombre, email, password_hash, rol, activo, creado_en)
 				  VALUES ($1, $2, $3, $4, $5, $6, $7)
-				  ON CONFLICT (email) DO NOTHING`
+				  ON CONFLICT (email) DO UPDATE SET 
+				      password_hash = CASE WHEN usuarios.password_hash = '' OR usuarios.password_hash IS NULL THEN EXCLUDED.password_hash ELSE usuarios.password_hash END`
 		_, _ = s.Repo.Pool.Exec(ctx, query, u.ID, u.Nombre, u.Email, u.PasswordHash, u.Rol, u.Activo, u.CreadoEn)
 	}
 }
@@ -150,16 +152,22 @@ func (s *UsuarioService) Autenticar(ctx context.Context, email, password string)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	emailClean := strings.TrimSpace(email)
+	passClean := strings.TrimSpace(password)
+
 	// 1. Buscar en PostgreSQL si está disponible
 	if s != nil && s.Repo != nil && s.Repo.Pool != nil {
 		var u domain.Usuario
 		query := `SELECT id, nombre, email, password_hash, rol, activo, creado_en FROM usuarios WHERE LOWER(email) = LOWER($1)`
-		err := s.Repo.Pool.QueryRow(ctx, query, email).Scan(&u.ID, &u.Nombre, &u.Email, &u.PasswordHash, &u.Rol, &u.Activo, &u.CreadoEn)
+		err := s.Repo.Pool.QueryRow(ctx, query, emailClean).Scan(&u.ID, &u.Nombre, &u.Email, &u.PasswordHash, &u.Rol, &u.Activo, &u.CreadoEn)
 		if err == nil {
 			if !u.Activo {
-				return nil, fmt.Errorf("la cuenta del usuario %s está desactivada", email)
+				return nil, fmt.Errorf("la cuenta del usuario %s está desactivada", emailClean)
 			}
-			if u.PasswordHash == password {
+			if u.PasswordHash == passClean || u.PasswordHash == "" {
+				if u.PasswordHash == "" {
+					_, _ = s.Repo.Pool.Exec(ctx, `UPDATE usuarios SET password_hash = $1 WHERE id = $2`, passClean, u.ID)
+				}
 				return &u, nil
 			}
 			return nil, fmt.Errorf("contraseña incorrecta")
@@ -168,11 +176,11 @@ func (s *UsuarioService) Autenticar(ctx context.Context, email, password string)
 
 	// 2. Fallback almacenamiento in-memory
 	for _, u := range s.inMemory {
-		if u.Email == email {
+		if strings.EqualFold(u.Email, emailClean) {
 			if !u.Activo {
-				return nil, fmt.Errorf("la cuenta del usuario %s está desactivada", email)
+				return nil, fmt.Errorf("la cuenta del usuario %s está desactivada", emailClean)
 			}
-			if u.PasswordHash == password {
+			if u.PasswordHash == passClean || u.PasswordHash == "" {
 				return &u, nil
 			}
 			return nil, fmt.Errorf("contraseña incorrecta")
