@@ -117,7 +117,7 @@ func (s *UsuarioService) ListarUsuarios(ctx context.Context) ([]domain.Usuario, 
 	}
 	defer rows.Close()
 
-	var list []domain.Usuario
+	list := make([]domain.Usuario, 0)
 	for rows.Next() {
 		var u domain.Usuario
 		if err := rows.Scan(&u.ID, &u.Nombre, &u.Email, &u.Rol, &u.Activo, &u.CreadoEn); err != nil {

@@ -73,7 +73,7 @@ func (s *ClienteService) ListarClientes(ctx context.Context, busqueda string) ([
 	}
 	defer rows.Close()
 
-	var clientes []domain.Cliente
+	clientes := make([]domain.Cliente, 0)
 	for rows.Next() {
 		var c domain.Cliente
 		if err := rows.Scan(&c.ID, &c.RuccEdula, &c.RazonSocial, &c.Direccion, &c.Telefono, &c.Email, &c.RepresentanteLegal, &c.TipoContribuyente, &c.CreadoEn); err != nil {
