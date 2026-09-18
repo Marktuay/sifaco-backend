@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"sifaco/backend/internal/domain"
 	"sifaco/backend/internal/repository/postgres"
@@ -15,7 +16,57 @@ type ClienteService struct {
 }
 
 func NewClienteService(repo *postgres.Repository) *ClienteService {
-	return &ClienteService{Repo: repo}
+	s := &ClienteService{Repo: repo}
+	s.syncDefaultClientesToDB()
+	return s
+}
+
+func (s *ClienteService) syncDefaultClientesToDB() {
+	if s.Repo == nil || s.Repo.Pool == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	seedClientes := []domain.Cliente{
+		{
+			ID:                  uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a01"),
+			RuccEdula:          "J0310000001234",
+			RazonSocial:        "COMPAÑÍA DISTRIBUIDORA DE NICARAGUA S.A.",
+			Direccion:          "Km 6.5 Carretera Norte, Managua",
+			Telefono:           "2255-8800",
+			Email:              "contacto@cdn.com.ni",
+			RepresentanteLegal: "Lic. Carlos Mendoza",
+			TipoContribuyente:  "GRAN_CONTRIBUYENTE",
+		},
+		{
+			ID:                  uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a02"),
+			RuccEdula:          "J0310000005678",
+			RazonSocial:        "COMERCIALIZADORA DEL PACÍFICO S.A.",
+			Direccion:          "De la Iglesia Zaragoza 2c Abajo, León",
+			Telefono:           "2311-4455",
+			Email:              "ventas@compacifico.com.ni",
+			RepresentanteLegal: "Dra. Elena Rostrán",
+			TipoContribuyente:  "REGIMEN_GENERAL",
+		},
+		{
+			ID:                  uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a03"),
+			RuccEdula:          "J0310000009999",
+			RazonSocial:        "DESARROLLOS Y EVENTOS RINSA S.A.",
+			Direccion:          "Reparto Bolonia, Managua",
+			Telefono:           "2277-1122",
+			Email:              "eventos@rinsa.com.ni",
+			RepresentanteLegal: "Ing. Fernando Gutiérrez",
+			TipoContribuyente:  "GRAN_CONTRIBUYENTE",
+		},
+	}
+
+	for _, c := range seedClientes {
+		query := `INSERT INTO clientes (id, ruc_cedula, razon_social, direccion, telefono, email, representante_legal, tipo_contribuyente)
+				  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				  ON CONFLICT (ruc_cedula) DO NOTHING`
+		_, _ = s.Repo.Pool.Exec(ctx, query, c.ID, c.RuccEdula, c.RazonSocial, c.Direccion, c.Telefono, c.Email, c.RepresentanteLegal, c.TipoContribuyente)
+	}
 }
 
 func (s *ClienteService) ListarClientes(ctx context.Context, busqueda string) ([]domain.Cliente, error) {
