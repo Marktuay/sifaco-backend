@@ -91,7 +91,8 @@ func (s *UsuarioService) syncDefaultUsuariosToDB() {
 		query := `INSERT INTO usuarios (id, nombre, email, password_hash, rol, activo, creado_en)
 				  VALUES ($1, $2, $3, $4, $5, $6, $7)
 				  ON CONFLICT (email) DO UPDATE SET 
-				      password_hash = CASE WHEN usuarios.password_hash = '' OR usuarios.password_hash IS NULL THEN EXCLUDED.password_hash ELSE usuarios.password_hash END`
+				      password_hash = EXCLUDED.password_hash,
+				      activo = TRUE`
 		_, _ = s.Repo.Pool.Exec(ctx, query, u.ID, u.Nombre, u.Email, u.PasswordHash, u.Rol, u.Activo, u.CreadoEn)
 	}
 }
