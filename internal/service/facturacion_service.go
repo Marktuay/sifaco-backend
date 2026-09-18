@@ -19,7 +19,25 @@ type FacturacionService struct {
 }
 
 func NewFacturacionService(repo *postgres.Repository) *FacturacionService {
-	return &FacturacionService{Repo: repo}
+	s := &FacturacionService{Repo: repo}
+	s.syncDefaultTalonarioToDB()
+	return s
+}
+
+func (s *FacturacionService) syncDefaultTalonarioToDB() {
+	if s.Repo == nil || s.Repo.Pool == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	talonarioID := uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380f01")
+	fechaVence := time.Now().AddDate(2, 0, 0)
+
+	query := `INSERT INTO talonarios_dgi (id, numero_autorizacion, serie, numero_desde, numero_hasta, numero_actual, fecha_vencimiento, activo)
+			  VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+			  ON CONFLICT DO NOTHING`
+	_, _ = s.Repo.Pool.Exec(ctx, query, talonarioID, "DGI-2026-8899", "A", 1, 1000, 1, fechaVence)
 }
 
 // GenerarFacturaPreimpresa ejecuta la transacción atómica fiscal DGI para emitir una factura preimpresa
