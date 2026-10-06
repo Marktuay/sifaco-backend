@@ -122,6 +122,33 @@ CREATE TABLE IF NOT EXISTS evento_paquetes (
     moneda VARCHAR(3) NOT NULL DEFAULT 'NIO'
 );
 
+CREATE TABLE IF NOT EXISTS evento_presupuestos_hotel (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    evento_id UUID NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
+    hotel_sede VARCHAR(150),
+    fecha VARCHAR(50),
+    salon VARCHAR(100),
+    pax INT DEFAULT 60,
+    almuerzo_usd NUMERIC(14,4) DEFAULT 0.0000,
+    estacion_cafe_usd NUMERIC(14,4) DEFAULT 0.0000,
+    coffee_breaks_usd NUMERIC(14,4) DEFAULT 0.0000,
+    total_ab_usd NUMERIC(14,4) DEFAULT 0.0000,
+    cargo_montaje_usd NUMERIC(14,4) DEFAULT 0.0000,
+    renta_salon_usd NUMERIC(14,4) DEFAULT 0.0000,
+    consumo_minimo_usd NUMERIC(14,4) DEFAULT 0.0000,
+    montaje_dia_anterior_usd NUMERIC(14,4) DEFAULT 0.0000,
+    audiovisuales_usd NUMERIC(14,4) DEFAULT 0.0000,
+    internet_usd NUMERIC(14,4) DEFAULT 0.0000,
+    cableado_electrico_usd NUMERIC(14,4) DEFAULT 0.0000,
+    servicio_medico_usd NUMERIC(14,4) DEFAULT 0.0000,
+    renta_sala_pequena_usd NUMERIC(14,4) DEFAULT 0.0000,
+    total_cotizado_usd NUMERIC(14,4) DEFAULT 0.0000,
+    link_presupuesto TEXT,
+    montaje_observaciones TEXT,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_evento_presupuesto UNIQUE(evento_id)
+);
+
 -- ------------------------------------------------------------------------------
 -- MÓDULO 1: FACTURAS DE VENTA (Cabecera y Detalle)
 -- ------------------------------------------------------------------------------

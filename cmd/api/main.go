@@ -36,9 +36,10 @@ func main() {
 	audSvc := service.NewAuditoriaService(repo)
 	drpSvc := service.NewDRPService(repo, audSvc)
 	usrSvc := service.NewUsuarioService(repo)
+	eventSvc := service.NewEventoService(repo)
 
 	// Inicializar Router HTTP (Gin)
-	r := handlerHttp.NewRouter(factSvc, cartSvc, repSvc, cliSvc, audSvc, drpSvc, usrSvc)
+	r := handlerHttp.NewRouter(factSvc, cartSvc, repSvc, cliSvc, audSvc, drpSvc, usrSvc, eventSvc)
 
 	port := os.Getenv("PORT")
 	if port == "" {

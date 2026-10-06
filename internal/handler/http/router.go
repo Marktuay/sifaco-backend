@@ -25,9 +25,10 @@ type Server struct {
 	AuditoriaSvc   *service.AuditoriaService
 	DrpSvc         *service.DRPService
 	UsuarioSvc     *service.UsuarioService
+	EventoSvc      *service.EventoService
 }
 
-func NewRouter(factSvc *service.FacturacionService, cartSvc *service.CarteraService, repSvc *service.ReportesDGIService, cliSvc *service.ClienteService, audSvc *service.AuditoriaService, drpSvc *service.DRPService, usrSvc *service.UsuarioService) *gin.Engine {
+func NewRouter(factSvc *service.FacturacionService, cartSvc *service.CarteraService, repSvc *service.ReportesDGIService, cliSvc *service.ClienteService, audSvc *service.AuditoriaService, drpSvc *service.DRPService, usrSvc *service.UsuarioService, eventSvc *service.EventoService) *gin.Engine {
 	r := gin.Default()
 
 	allowedOriginsEnv := os.Getenv("ALLOWED_ORIGINS")
@@ -67,10 +68,19 @@ func NewRouter(factSvc *service.FacturacionService, cartSvc *service.CarteraServ
 		AuditoriaSvc:   audSvc,
 		DrpSvc:         drpSvc,
 		UsuarioSvc:     usrSvc,
+		EventoSvc:      eventSvc,
 	}
 
 	api := r.Group("/api/v1")
 	{
+		// Endpoints Eventos y Centros de Costo
+		eventos := api.Group("/eventos")
+		{
+			eventos.GET("", s.handleListarEventos)
+			eventos.POST("", s.handleCrearEvento)
+			eventos.GET("/:id/presupuesto", s.handleObtenerPresupuestoHotel)
+			eventos.POST("/:id/presupuesto", s.handleGuardarPresupuestoHotel)
+		}
 		// Endpoint Autenticación y Login
 		api.POST("/auth/login", s.handleLogin)
 
@@ -655,4 +665,102 @@ func (s *Server) handleRestaurarBackupDRP(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"mensaje": fmt.Sprintf("Restauración DRP ejecutada con éxito desde '%s'", req.NombreArchivo)})
+}
+
+// Handlers Eventos y Centros de Costos
+func (s *Server) handleListarEventos(c *gin.Context) {
+	busqueda := c.Query("search")
+	if s.EventoSvc == nil {
+		c.JSON(http.StatusOK, []domain.EventoResponse{})
+		return
+	}
+	list, err := s.EventoSvc.ListarEventos(c.Request.Context(), busqueda)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, list)
+}
+
+func (s *Server) handleCrearEvento(c *gin.Context) {
+	var req domain.CrearEventoRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Datos de evento no válidos: " + err.Error()})
+		return
+	}
+	if s.EventoSvc == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Servicio de eventos no disponible"})
+		return
+	}
+	item, err := s.EventoSvc.CrearEvento(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if s.AuditoriaSvc != nil {
+		_, _ = s.AuditoriaSvc.RegistrarLog(c.Request.Context(), domain.RegistrarAuditoriaRequest{
+			UsuarioEmail:  "admin@sifaco.ni",
+			Rol:           "ADMIN",
+			Accion:        "CREAR_EVENTO",
+			TablaAfectada: "eventos",
+			Detalles:      fmt.Sprintf("Evento '%s' [%s] creado exitosamente", item.Nombre, item.Codigo),
+		}, c.ClientIP())
+	}
+
+	c.JSON(http.StatusCreated, item)
+}
+
+func (s *Server) handleObtenerPresupuestoHotel(c *gin.Context) {
+	idStr := c.Param("id")
+	eventoID, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID de evento no válido"})
+		return
+	}
+	if s.EventoSvc == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Servicio de eventos no disponible"})
+		return
+	}
+	res, err := s.EventoSvc.ObtenerPresupuestoHotel(c.Request.Context(), eventoID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, res)
+}
+
+func (s *Server) handleGuardarPresupuestoHotel(c *gin.Context) {
+	idStr := c.Param("id")
+	eventoID, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID de evento no válido"})
+		return
+	}
+	var req domain.GuardarPresupuestoHotelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Datos de presupuesto no válidos: " + err.Error()})
+		return
+	}
+	if s.EventoSvc == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Servicio de eventos no disponible"})
+		return
+	}
+	res, err := s.EventoSvc.GuardarPresupuestoHotel(c.Request.Context(), eventoID, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if s.AuditoriaSvc != nil {
+		_, _ = s.AuditoriaSvc.RegistrarLog(c.Request.Context(), domain.RegistrarAuditoriaRequest{
+			UsuarioEmail:  "admin@sifaco.ni",
+			Rol:           "ADMIN",
+			Accion:        "GUARDAR_PRESUPUESTO_HOTEL",
+			TablaAfectada: "evento_presupuestos_hotel",
+			Detalles:      fmt.Sprintf("Presupuesto hotelero guardado para evento ID %s (Total: $%.2f)", eventoID.String(), res.TotalCotizadoUSD),
+		}, c.ClientIP())
+	}
+
+	c.JSON(http.StatusOK, res)
 }

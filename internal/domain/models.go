@@ -74,6 +74,90 @@ type Evento struct {
 	CreadoEn             time.Time `json:"creado_en"`
 }
 
+type CrearEventoRequest struct {
+	Codigo               string  `json:"codigo" binding:"required"`
+	Nombre               string  `json:"nombre" binding:"required"`
+	Descripcion          string  `json:"descripcion"`
+	Fecha                string  `json:"fecha"`
+	Lugar                string  `json:"lugar"`
+	Capacidad            int     `json:"capacidad"`
+	CantidadStands       int     `json:"cantidad_stands"`
+	CantidadSalones      int     `json:"cantidad_salones"`
+	CateringRequerido    bool    `json:"catering_requerido"`
+	AudiovisualRequerido bool    `json:"audiovisual_requerido"`
+	IngresosEstimados    float64                         `json:"ingresos_estimados"`
+	GastosEstimados      float64                         `json:"gastos_estimados"`
+	Estado               string                          `json:"estado"`
+	PresupuestoInicial   *GuardarPresupuestoHotelRequest `json:"presupuesto_inicial,omitempty"`
+}
+
+type EventoResponse struct {
+	ID                   uuid.UUID `json:"id"`
+	Codigo               string    `json:"codigo"`
+	Nombre               string    `json:"nombre"`
+	Descripcion          string    `json:"descripcion"`
+	Fecha                string    `json:"fecha"`
+	Lugar                string    `json:"lugar"`
+	Capacidad            int       `json:"capacidad"`
+	CantidadStands       int       `json:"cantidad_stands"`
+	CantidadSalones      int       `json:"cantidad_salones"`
+	CateringRequerido    bool      `json:"catering_requerido"`
+	AudiovisualRequerido bool      `json:"audiovisual_requerido"`
+	IngresosFacturados   float64   `json:"ingresos_facturados"`
+	GastosProveedores    float64   `json:"gastos_proveedores"`
+	MargenBruto          float64   `json:"margen_bruto"`
+	RentabilidadPct      float64   `json:"rentabilidad_pct"`
+	Estado               string    `json:"estado"`
+	CreadoEn             time.Time `json:"creado_en"`
+}
+
+type PresupuestoHotel struct {
+	ID                    uuid.UUID `json:"id"`
+	EventoID              uuid.UUID `json:"evento_id"`
+	HotelSede             string    `json:"hotel_sede"`
+	Fecha                 string    `json:"fecha"`
+	Salon                 string    `json:"salon"`
+	Pax                   int       `json:"pax"`
+	AlmuerzoUSD           float64   `json:"almuerzo_usd"`
+	EstacionCafeUSD       float64   `json:"estacion_cafe_usd"`
+	CoffeeBreaksUSD       float64   `json:"coffee_breaks_usd"`
+	TotalABUSD            float64   `json:"total_ab_usd"`
+	CargoMontajeUSD       float64   `json:"cargo_montaje_usd"`
+	RentaSalonUSD         float64   `json:"renta_salon_usd"`
+	ConsumoMinimoUSD      float64   `json:"consumo_minimo_usd"`
+	MontajeDiaAnteriorUSD float64   `json:"montaje_dia_anterior_usd"`
+	AudiovisualesUSD      float64   `json:"audiovisuales_usd"`
+	InternetUSD           float64   `json:"internet_usd"`
+	CableadoElectricoUSD  float64   `json:"cableado_electrico_usd"`
+	ServicioMedicoUSD     float64   `json:"servicio_medico_usd"`
+	RentaSalaPequenaUSD   float64   `json:"renta_sala_pequena_usd"`
+	TotalCotizadoUSD      float64   `json:"total_cotizado_usd"`
+	LinkPresupuesto       string    `json:"link_presupuesto"`
+	MontajeObservaciones  string    `json:"montaje_observaciones"`
+	CreadoEn              time.Time `json:"creado_en"`
+}
+
+type GuardarPresupuestoHotelRequest struct {
+	HotelSede             string  `json:"hotel_sede"`
+	Fecha                 string  `json:"fecha"`
+	Salon                 string  `json:"salon"`
+	Pax                   int     `json:"pax"`
+	AlmuerzoUSD           float64 `json:"almuerzo_usd"`
+	EstacionCafeUSD       float64 `json:"estacion_cafe_usd"`
+	CoffeeBreaksUSD       float64 `json:"coffee_breaks_usd"`
+	CargoMontajeUSD       float64 `json:"cargo_montaje_usd"`
+	RentaSalonUSD         float64 `json:"renta_salon_usd"`
+	ConsumoMinimoUSD      float64 `json:"consumo_minimo_usd"`
+	MontajeDiaAnteriorUSD float64 `json:"montaje_dia_anterior_usd"`
+	AudiovisualesUSD      float64 `json:"audiovisuales_usd"`
+	InternetUSD           float64 `json:"internet_usd"`
+	CableadoElectricoUSD  float64 `json:"cableado_electrico_usd"`
+	ServicioMedicoUSD     float64 `json:"servicio_medico_usd"`
+	RentaSalaPequenaUSD   float64 `json:"renta_sala_pequena_usd"`
+	LinkPresupuesto       string  `json:"link_presupuesto"`
+	MontajeObservaciones  string  `json:"montaje_observaciones"`
+}
+
 // Factura representa la cabecera de la factura preimpresa
 type Factura struct {
 	ID                    uuid.UUID `json:"id"`
