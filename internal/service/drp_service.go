@@ -236,7 +236,7 @@ func (s *DRPService) GenerarBackupManual(ctx context.Context, tipo string) (*dom
 	// Auditoría
 	if s.AuditoriaSvc != nil {
 		_, _ = s.AuditoriaSvc.RegistrarLog(ctx, domain.RegistrarAuditoriaRequest{
-			UsuarioEmail:  "admin@sifaco.ni",
+			UsuarioEmail:  "marktuay@gmail.com",
 			Rol:           "ADMIN",
 			Accion:        "GENERAR_RESPALDO_DRP",
 			TablaAfectada: "backups_drp",
@@ -267,7 +267,7 @@ func (s *DRPService) RestaurarBackup(ctx context.Context, nombreArchivo string) 
 	// Auditoría
 	if s.AuditoriaSvc != nil {
 		_, _ = s.AuditoriaSvc.RegistrarLog(ctx, domain.RegistrarAuditoriaRequest{
-			UsuarioEmail:  "admin@sifaco.ni",
+			UsuarioEmail:  "marktuay@gmail.com",
 			Rol:           "ADMIN",
 			Accion:        "RESTAURAR_RESPALDO_DRP",
 			TablaAfectada: "backups_drp",

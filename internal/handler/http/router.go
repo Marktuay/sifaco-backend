@@ -305,20 +305,31 @@ func (s *Server) handleLogin(c *gin.Context) {
 		return
 	}
 
+	emailClean := strings.TrimSpace(body.Email)
+
+	// Regla de Modo Mantenimiento: Únicamente marktuay@gmail.com está autorizada
+	if !strings.EqualFold(emailClean, "marktuay@gmail.com") {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":              "El sistema se encuentra en modo mantenimiento. Todas las cuentas estándar han sido deshabilitadas temporalmente. Únicamente la cuenta de administrador marktuay@gmail.com está autorizada.",
+			"modo_mantenimiento": true,
+		})
+		return
+	}
+
 	var usr *domain.Usuario
 	var err error
 
 	if s.UsuarioSvc != nil {
-		usr, err = s.UsuarioSvc.Autenticar(c.Request.Context(), body.Email, body.Password)
+		usr, err = s.UsuarioSvc.Autenticar(c.Request.Context(), emailClean, body.Password)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Credenciales no válidas"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error(), "modo_mantenimiento": true})
 			return
 		}
 	} else {
 		usr = &domain.Usuario{
 			ID:     uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99"),
-			Nombre: "Administrador General",
-			Email:  body.Email,
+			Nombre: "Mark Tuay (Super Administrador)",
+			Email:  "marktuay@gmail.com",
 			Rol:    "ADMIN",
 			Activo: true,
 		}
@@ -383,7 +394,7 @@ func (s *Server) handleCrearUsuario(c *gin.Context) {
 
 	if s.AuditoriaSvc != nil {
 		_, _ = s.AuditoriaSvc.RegistrarLog(c.Request.Context(), domain.RegistrarAuditoriaRequest{
-			UsuarioEmail:  "admin@sifaco.ni",
+			UsuarioEmail:  "marktuay@gmail.com",
 			Rol:           "ADMIN",
 			Accion:        "CREAR_USUARIO",
 			TablaAfectada: "usuarios",
@@ -418,7 +429,7 @@ func (s *Server) handleActualizarUsuario(c *gin.Context) {
 
 	if s.AuditoriaSvc != nil {
 		_, _ = s.AuditoriaSvc.RegistrarLog(c.Request.Context(), domain.RegistrarAuditoriaRequest{
-			UsuarioEmail:  "admin@sifaco.ni",
+			UsuarioEmail:  "marktuay@gmail.com",
 			Rol:           "ADMIN",
 			Accion:        "ACTUALIZAR_USUARIO",
 			TablaAfectada: "usuarios",
@@ -465,7 +476,7 @@ func (s *Server) handleEliminarUsuario(c *gin.Context) {
 
 	if s.AuditoriaSvc != nil {
 		_, _ = s.AuditoriaSvc.RegistrarLog(c.Request.Context(), domain.RegistrarAuditoriaRequest{
-			UsuarioEmail:  "admin@sifaco.ni",
+			UsuarioEmail:  "marktuay@gmail.com",
 			Rol:           "ADMIN",
 			Accion:        "ELIMINAR_USUARIO",
 			TablaAfectada: "usuarios",
@@ -700,7 +711,7 @@ func (s *Server) handleCrearEvento(c *gin.Context) {
 
 	if s.AuditoriaSvc != nil {
 		_, _ = s.AuditoriaSvc.RegistrarLog(c.Request.Context(), domain.RegistrarAuditoriaRequest{
-			UsuarioEmail:  "admin@sifaco.ni",
+			UsuarioEmail:  "marktuay@gmail.com",
 			Rol:           "ADMIN",
 			Accion:        "CREAR_EVENTO",
 			TablaAfectada: "eventos",
@@ -754,7 +765,7 @@ func (s *Server) handleGuardarPresupuestoHotel(c *gin.Context) {
 
 	if s.AuditoriaSvc != nil {
 		_, _ = s.AuditoriaSvc.RegistrarLog(c.Request.Context(), domain.RegistrarAuditoriaRequest{
-			UsuarioEmail:  "admin@sifaco.ni",
+			UsuarioEmail:  "marktuay@gmail.com",
 			Rol:           "ADMIN",
 			Accion:        "GUARDAR_PRESUPUESTO_HOTEL",
 			TablaAfectada: "evento_presupuestos_hotel",

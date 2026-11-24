@@ -326,10 +326,10 @@ INSERT INTO cuentas_contables (codigo, nombre, tipo, nivel) VALUES
 ('5101', 'Costos Operativos de Eventos', 'GASTO', 1)
 ON CONFLICT (codigo) DO NOTHING;
 
--- Usuario Admin por Defecto
-INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES
-('Administrador SIFACO', 'admin@sifaco.ni', '$2a$10$7EqJtq986P2B2Xn83b5e4.1.1.1.1.1.1.1.1.1.1.1.1.1.1', 'ADMIN')
-ON CONFLICT (email) DO NOTHING;
+-- Usuario Super Admin por Defecto (Modo Mantenimiento)
+INSERT INTO usuarios (nombre, email, password_hash, rol, activo) VALUES
+('Mark Tuay (Super Administrador)', 'marktuay@gmail.com', 'admin123', 'ADMIN', true)
+ON CONFLICT (email) DO UPDATE SET activo = true, rol = 'ADMIN';
 
 -- Talonario Demo DGI
 INSERT INTO talonarios_dgi (numero_autorizacion, serie, numero_desde, numero_hasta, numero_actual, fecha_autorizacion, fecha_vencimiento) VALUES
